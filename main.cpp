@@ -1,7 +1,7 @@
 #include <glad/glad.h>
 #include <iostream>
 #include <GLFW/glfw3.h>
-#include <gl/GL.h>
+#include <filesystem>
 #define IMGUI_IMPL_OPENGL_LOADER_GLAD
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -36,27 +36,17 @@ int main() {
 }
 
 bool Process::initAll() {
-    if (!glfwInit()) {
-        std::cerr << "Failed to initialize GLFW" << std::endl;
-        return false;
-    }
+    if (!glfwInit()) return false;
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     window = glfwCreateWindow(800, 600, "Win11 Sudoku", nullptr, nullptr);
-    if (!window) {
-        std::cerr << "Failed to create GLFW window" << std::endl;
-        glfwTerminate();
-        return false;
-    }
+    if (!window) { glfwTerminate(); return false; }
 
     glfwMakeContextCurrent(window);
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-        std::cerr << "Failed to initialize GLAD" << std::endl;
-        return false;
-    }
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) return false;
 
     glfwSwapInterval(1);
 
@@ -64,40 +54,41 @@ bool Process::initAll() {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
 
+    // 优化：安全加载字体，避免崩溃
     const char* fontPath = "C:/Windows/Fonts/msyh.ttc";
-    ImFont* font = io.Fonts->AddFontFromFileTTF(fontPath, 14.0f, nullptr, io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
-    if (font) {
-        io.FontDefault = font;
+    if (std::filesystem::exists(fontPath)) {
+        ImFont* font = io.Fonts->AddFontFromFileTTF(fontPath, 16.0f, nullptr, io.Fonts->GetGlyphRangesDefault());
+        if (font) io.FontDefault = font;
     }
 
     UI::apply_win11_dark_theme();
 
-    const char* glsl_version = "#version 130";
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init(glsl_version);
+    ImGui_ImplOpenGL3_Init("#version 130");
 
-    ui_renderer = new UIRenderer(&sudoku_core, window);
+    ui_renderer = new UIRenderer(&sudoku_core);
     sudoku_core.loadPuzzle(Difficulty::NORMAL);
     return true;
 }
 
 void Process::running() {
     while (!glfwWindowShouldClose(window)) {
-        glfwPollEvents();
+        glfwWaitEventsTimeout(0.016);
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        ImGui::SetNextWindowPos(ImVec2(0, 0));
-        ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
-        ImGui::Begin("Win11 Sudoku", nullptr, 
-            ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | 
-            ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | 
-            ImGuiWindowFlags_NoScrollWithMouse);
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(viewport->Pos);
+        ImGui::SetNextWindowSize(viewport->Size);
 
+        ImGui::Begin("Win11 Sudoku", nullptr,
+            ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+            ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBringToFrontOnFocus);
+
+        ui_renderer->handleInput(); // 优先处理输入
         ui_renderer->render();
-        ui_renderer->handleInput();
 
         ImGui::End();
 

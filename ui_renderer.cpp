@@ -2,263 +2,154 @@
 #include "imgui.h"
 #include "color_rgba.h"
 #include "my_style.h"
-#include <cstdio>
 
+// 渲染大优化：放弃 BeginChild，使用 ImDrawList 零开销渲染
 void UIRenderer::drawCell(int8_t row, int8_t col) {
-    if (!core) return;
-    
     float x = padding + col * cell_size;
     float y = padding + row * cell_size;
-    
-    bool is_selected = core->isSelected(row, col);
-    bool is_highlighted = core->isHighlighted(row, col);
-    bool is_given = core->isGiven(row, col);
-    bool is_error = core->isError(row, col);
-    uint8_t value = core->getValue(row, col);
-    
-    ImVec4 bg_color;
-    if (is_selected) {
-        bg_color = rgba::to_ImVec4(0, 120, 212, 255);
-    } else if (is_highlighted) {
-        bg_color = rgba::to_ImVec4(63, 63, 63, 255);
-    } else {
-        bg_color = rgba::to_ImVec4(45, 45, 46, 255);
-    }
-    
+
+    ImGui::SetCursorPos(ImVec2(x, y));
+
+    // O(1) 生成 ID，替代原先的 snprintf
+    ImGui::PushID(row * 9 + col);
+
+    ImVec4 bg_color = rgba::to_ImVec4(45, 45, 46, 255);
+    if (core->isSelected(row, col)) bg_color = rgba::to_ImVec4(0, 120, 212, 255);
+    else if (core->isHighlighted(row, col)) bg_color = rgba::to_ImVec4(63, 63, 63, 255);
+
     ImGui::PushStyleColor(ImGuiCol_Button, bg_color);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, rgba::to_ImVec4(63, 63, 63, 255));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, rgba::to_ImVec4(72, 72, 72, 255));
-    
-    ImGui::SetCursorPos(ImVec2(x, y));
-    char button_id[16];
-    snprintf(button_id, sizeof(button_id), "##cell_%d_%d", row, col);
-    if (ImGui::Button(button_id, ImVec2(cell_size - 1, cell_size - 1))) {
+
+    if (ImGui::Button("", ImVec2(cell_size - 1, cell_size - 1))) {
         core->selectCell(row, col);
     }
-    
     ImGui::PopStyleColor(3);
-    
-    ImGui::SetCursorPos(ImVec2(x + 2, y + 2));
-    ImGui::BeginChild("cell_content", ImVec2(cell_size - 5, cell_size - 5), false, ImGuiWindowFlags_NoDecoration);
-    
+
+    // 获取按钮在屏幕上的左上角绝对坐标
+    ImVec2 p0 = ImGui::GetItemRectMin();
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+
+    uint8_t value = core->getValue(row, col);
     if (value != 0) {
-        ImVec4 text_color = is_given ? rgba::to_ImVec4(255, 255, 255, 255) : rgba::to_ImVec4(0, 140, 255, 255);
-        if (is_error) {
-            text_color = rgba::to_ImVec4(232, 17, 35, 255);
-        }
-        
-        ImGui::PushStyleColor(ImGuiCol_Text, text_color);
-        ImGui::SetCursorPos(ImVec2((cell_size - 30) / 2, (cell_size - 36) / 2));
-        ImGui::Text("%d", value);
-        ImGui::PopStyleColor();
-    } else {
-        const uint8_t* notes = core->getNotes(row, col);
-        if (!notes) {
-            ImGui::EndChild();
-            return;
-        }
-        float note_size = cell_size / 3;
-        float note_pad = 2.0f;
-        
-        for (uint8_t i = 0; i < 9; ++i) {
-            if (notes[i]) {
-                uint8_t note_row = i / 3;
-                uint8_t note_col = i % 3;
-                float nx = note_col * note_size + note_pad;
-                float ny = note_row * note_size + note_pad;
-                
-                ImGui::PushStyleColor(ImGuiCol_Text, rgba::to_ImVec4(110, 110, 110, 255));
-                ImGui::SetCursorPos(ImVec2(nx, ny));
-                ImGui::Text("%d", i + 1);
-                ImGui::PopStyleColor();
+        uint32_t text_color = core->isGiven(row, col) ? IM_COL32(255, 255, 255, 255) : IM_COL32(0, 140, 255, 255);
+        if (core->isError(row, col)) text_color = IM_COL32(232, 17, 35, 255);
+
+        char text[2] = { (char)('0' + value), '\0' };
+        ImVec2 text_size = ImGui::CalcTextSize(text);
+        // 居中绘制
+        draw_list->AddText(ImVec2(p0.x + (cell_size - text_size.x) * 0.5f, p0.y + (cell_size - text_size.y) * 0.5f), text_color, text);
+    }
+    else {
+        uint16_t notes = core->getNotes(row, col);
+        if (notes) {
+            float note_size = cell_size / 3.0f;
+            for (int i = 0; i < 9; ++i) {
+                if (notes & (1 << i)) { // 通过位掩码判断笔记
+                    int n_row = i / 3, n_col = i % 3;
+                    char n_text[2] = { (char)('1' + i), '\0' };
+                    ImVec2 n_pos = ImVec2(p0.x + n_col * note_size + 4.0f, p0.y + n_row * note_size + 2.0f);
+                    draw_list->AddText(n_pos, IM_COL32(110, 110, 110, 255), n_text);
+                }
             }
         }
     }
-    
-    ImGui::EndChild();
+
+    ImGui::PopID();
 }
 
 void UIRenderer::drawGrid() {
-    if (!core) return;
-    
     float grid_size = padding * 2 + cell_size * 9;
-    
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, rgba::to_ImVec4(37, 37, 38, 255));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, rgba::to_ImVec4(37, 37, 38, 255));
     ImGui::BeginChild("sudoku_grid", ImVec2(grid_size, grid_size), true, ImGuiWindowFlags_NoDecoration);
-    
-    for (uint8_t row = 0; row < 9; ++row) {
-        for (uint8_t col = 0; col < 9; ++col) {
+    for (uint8_t row = 0; row < 9; ++row)
+        for (uint8_t col = 0; col < 9; ++col)
             drawCell(row, col);
-        }
-    }
-    
     ImGui::EndChild();
     ImGui::PopStyleColor();
 }
 
 void UIRenderer::drawNumberPad() {
-    if (!core) return;
-    
     ImGui::BeginChild("number_pad", ImVec2(cell_size * 3 + padding * 2, cell_size * 4 + padding * 2), true, ImGuiWindowFlags_NoDecoration);
-    
-    static const char num_labels[9][2] = {"1", "2", "3", "4", "5", "6", "7", "8", "9"};
-    
-    for (uint8_t i = 0; i < 9; ++i) {
-        uint8_t row = i / 3;
-        uint8_t col = i % 3;
-        float x = padding + col * cell_size;
-        float y = padding + row * cell_size;
-        
-        UI::apply_win11_accent_button();
+    static const char* num_labels[9] = { "1","2","3","4","5","6","7","8","9" };
+
+    for (int i = 0; i < 9; ++i) {
+        float x = padding + (i % 3) * cell_size;
+        float y = padding + (i / 3) * cell_size;
+
         ImGui::SetCursorPos(ImVec2(x, y));
+        int pushes = UI::apply_win11_accent_button(); // 必须使用返回值 Pop
         if (ImGui::Button(num_labels[i], ImVec2(cell_size - 1, cell_size - 1))) {
-            int8_t sel_row = core->getSelectedRow();
-            int8_t sel_col = core->getSelectedCol();
-            if (sel_row >= 0 && sel_col >= 0) {
-                core->setValue(sel_row, sel_col, i + 1);
-            }
+            int8_t r = core->getSelectedRow(), c = core->getSelectedCol();
+            if (r >= 0 && c >= 0) core->setValue(r, c, i + 1);
         }
-        ImGui::PopStyleColor(3);
+        ImGui::PopStyleColor(pushes);
     }
-    
-    float x = padding;
-    float y = padding + 3 * cell_size;
-    
-    UI::apply_win11_dark_button();
-    ImGui::SetCursorPos(ImVec2(x, y));
+
+    ImGui::SetCursorPos(ImVec2(padding, padding + 3 * cell_size));
+    int pushes = UI::apply_win11_dark_button();
     if (ImGui::Button("Erase", ImVec2(cell_size * 3 - 1, cell_size - 1))) {
-        int8_t sel_row = core->getSelectedRow();
-        int8_t sel_col = core->getSelectedCol();
-        if (sel_row >= 0 && sel_col >= 0) {
-            core->eraseValue(sel_row, sel_col);
-        }
+        int8_t r = core->getSelectedRow(), c = core->getSelectedCol();
+        if (r >= 0 && c >= 0) core->eraseValue(r, c);
     }
-    ImGui::PopStyleColor(3);
-    
+    ImGui::PopStyleColor(pushes);
     ImGui::EndChild();
 }
 
 void UIRenderer::drawControls() {
-    if (!core) return;
-    
     ImGui::BeginChild("controls", ImVec2(cell_size * 3 + padding * 2, 120), true, ImGuiWindowFlags_NoDecoration);
-    
     ImGui::SetCursorPos(ImVec2(padding, padding));
-    UI::apply_win11_accent_button();
-    if (ImGui::Button("New Game", ImVec2(-1, 32))) {
-        core->loadPuzzle(Difficulty::NORMAL);
-    }
-    ImGui::PopStyleColor(3);
-    
+
+    int pushes = UI::apply_win11_accent_button();
+    if (ImGui::Button("New Game", ImVec2(-1, 32))) core->loadPuzzle(Difficulty::NORMAL);
+    ImGui::PopStyleColor(pushes);
+
     ImGui::SetCursorPos(ImVec2(padding, padding + 40));
-    UI::apply_win11_dark_button();
-    if (ImGui::Button("Reset", ImVec2(-1, 32))) {
-        core->reset();
-    }
-    ImGui::PopStyleColor(3);
-    
+    pushes = UI::apply_win11_dark_button();
+    if (ImGui::Button("Reset", ImVec2(-1, 32))) core->reset();
+
     ImGui::SetCursorPos(ImVec2(padding, padding + 80));
-    UI::apply_win11_dark_button();
     if (ImGui::Button("Check", ImVec2(-1, 32))) {
-        bool complete = core->isComplete();
-        if (complete) {
-            ImGui::OpenPopup("Complete");
-        } else {
-            core->checkConflicts();
-        }
+        if (core->isComplete()) ImGui::OpenPopup("Complete");
+        else core->checkConflicts();
     }
-    ImGui::PopStyleColor(3);
-    
+    ImGui::PopStyleColor(pushes);
     ImGui::EndChild();
 }
 
 void UIRenderer::render() {
-    if (!core) return;
-    
-    ImGui::BeginGroup();
-    drawGrid();
-    ImGui::EndGroup();
-    
+    ImGui::BeginGroup(); drawGrid(); ImGui::EndGroup();
     ImGui::SameLine();
-    
-    ImGui::BeginGroup();
-    drawNumberPad();
-    drawControls();
-    ImGui::EndGroup();
-    
-    ImGui::BeginPopup("Complete");
-    ImGui::Text("Congratulations!");
-    ImGui::Text("You solved the puzzle!");
-    if (ImGui::Button("OK")) {
-        ImGui::CloseCurrentPopup();
+    ImGui::BeginGroup(); drawNumberPad(); drawControls(); ImGui::EndGroup();
+
+    if (ImGui::BeginPopupModal("Complete", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("Congratulations! You solved the puzzle!");
+        if (ImGui::Button("OK", ImVec2(120, 0))) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
     }
-    ImGui::EndPopup();
 }
 
+// 抛弃 GLFW，使用原生的 ImGui 键盘处理，自带连按过滤机制
 void UIRenderer::handleInput() {
-    if (!core || !window) return;
-    
-    ImGuiIO& io = ImGui::GetIO();
-    if (!io.WantCaptureKeyboard) return;
-    
-    int8_t sel_row = core->getSelectedRow();
-    int8_t sel_col = core->getSelectedCol();
-    if (sel_row < 0 || sel_col < 0) return;
-    
-    static bool key_states[15] = {false};
-    
-    for (uint8_t i = 0; i < 9; ++i) {
-        int key = GLFW_KEY_1 + i;
-        bool pressed = glfwGetKey(window, key) == GLFW_PRESS;
-        if (pressed && !key_states[i]) {
-            key_states[i] = true;
-            core->setValue(sel_row, sel_col, i + 1);
-            return;
-        }
-        key_states[i] = pressed;
-    }
-    
-    bool del_pressed = glfwGetKey(window, GLFW_KEY_DELETE) == GLFW_PRESS;
-    bool back_pressed = glfwGetKey(window, GLFW_KEY_BACKSPACE) == GLFW_PRESS;
-    if ((del_pressed && !key_states[9]) || (back_pressed && !key_states[10])) {
-        key_states[9] = del_pressed;
-        key_states[10] = back_pressed;
-        core->eraseValue(sel_row, sel_col);
-        return;
-    }
-    key_states[9] = del_pressed;
-    key_states[10] = back_pressed;
-    
-    bool up_pressed = glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS;
-    bool down_pressed = glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS;
-    bool left_pressed = glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS;
-    bool right_pressed = glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS;
-    
-    if (up_pressed && !key_states[11] && sel_row > 0) {
-        key_states[11] = true;
-        core->selectCell(sel_row - 1, sel_col);
-    }
-    key_states[11] = up_pressed;
-    
-    if (down_pressed && !key_states[12] && sel_row < 8) {
-        key_states[12] = true;
-        core->selectCell(sel_row + 1, sel_col);
-    }
-    key_states[12] = down_pressed;
-    
-    if (left_pressed && !key_states[13] && sel_col > 0) {
-        key_states[13] = true;
-        core->selectCell(sel_row, sel_col - 1);
-    }
-    key_states[13] = left_pressed;
-    
-    if (right_pressed && !key_states[14] && sel_col < 8) {
-        key_states[14] = true;
-        core->selectCell(sel_row, sel_col + 1);
-    }
-    key_states[14] = right_pressed;
-}
+    int8_t r = core->getSelectedRow();
+    int8_t c = core->getSelectedCol();
+    if (r < 0 || c < 0) return;
 
-void UIRenderer::setCellSize(float size) {
-    cell_size = size;
+    // 1-9 数字键（主键盘或小键盘）
+    for (int i = 0; i < 9; ++i) {
+        if (ImGui::IsKeyPressed((ImGuiKey)(ImGuiKey_1 + i), false) ||
+            ImGui::IsKeyPressed((ImGuiKey)(ImGuiKey_Keypad1 + i), false)) {
+            core->setValue(r, c, i + 1);
+        }
+    }
+
+    if (ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) {
+        core->eraseValue(r, c);
+    }
+
+    // 键盘移动逻辑处理 (阻止连按刷屏：传入 false)
+    if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, true) && r > 0) core->selectCell(r - 1, c);
+    if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, true) && r < 8) core->selectCell(r + 1, c);
+    if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true) && c > 0) core->selectCell(r, c - 1);
+    if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, true) && c < 8) core->selectCell(r, c + 1);
 }

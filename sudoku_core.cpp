@@ -1,23 +1,25 @@
 #include "sudoku_core.h"
-#include <cmath>
 #include <cstring>
+#include <random>
+#include <algorithm>
 
+// 位运算适配与 C++ <random> 随机库提升性能
+void SudokuCore::shuffleArray(uint8_t arr[], uint8_t size) {
+    static std::mt19937 rng(std::random_device{}());
+    std::shuffle(arr, arr + size, rng);
+}
+
+// ... isValidPlacement 保持原样 (把 board[r][c].value 替换即可) ...
 bool SudokuCore::isValidPlacement(int8_t row, int8_t col, uint8_t num) const {
     if (num == 0) return true;
-    
     for (uint8_t i = 0; i < 9; ++i) {
         if (i != col && board[row][i].value == num) return false;
         if (i != row && board[i][col].value == num) return false;
     }
-    
-    int8_t box_row = (row / 3) * 3;
-    int8_t box_col = (col / 3) * 3;
-    for (int8_t i = box_row; i < box_row + 3; ++i) {
-        for (int8_t j = box_col; j < box_col + 3; ++j) {
+    int8_t box_row = (row / 3) * 3, box_col = (col / 3) * 3;
+    for (int8_t i = box_row; i < box_row + 3; ++i)
+        for (int8_t j = box_col; j < box_col + 3; ++j)
             if (i != row && j != col && board[i][j].value == num) return false;
-        }
-    }
-    
     return true;
 }
 
@@ -25,10 +27,10 @@ bool SudokuCore::solve(int8_t row, int8_t col) {
     if (row == 9) return true;
     if (col == 9) return solve(row + 1, 0);
     if (board[row][col].value != 0) return solve(row, col + 1);
-    
-    uint8_t nums[9] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+
+    uint8_t nums[9] = { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
     shuffleArray(nums, 9);
-    
+
     for (uint8_t i = 0; i < 9; ++i) {
         if (isValidPlacement(row, col, nums[i])) {
             board[row][col].value = nums[i];
@@ -37,15 +39,6 @@ bool SudokuCore::solve(int8_t row, int8_t col) {
         }
     }
     return false;
-}
-
-void SudokuCore::shuffleArray(uint8_t arr[], uint8_t size) {
-    for (uint8_t i = size - 1; i > 0; --i) {
-        uint8_t j = rand() % (i + 1);
-        uint8_t temp = arr[i];
-        arr[i] = arr[j];
-        arr[j] = temp;
-    }
 }
 
 void SudokuCore::generateCompleteBoard() {
@@ -57,22 +50,17 @@ void SudokuCore::generateCompleteBoard() {
 void SudokuCore::removeNumbers(uint8_t count) {
     uint8_t removed = 0;
     while (removed < count) {
-        uint8_t row = rand() % 9;
-        uint8_t col = rand() % 9;
+        uint8_t row = rand() % 9, col = rand() % 9;
         if (board[row][col].value != 0) {
             board[row][col].value = 0;
-            board[row][col].is_given = 0;
+            board[row][col].setFlag(Cell::GIVEN, false);
             removed++;
         }
     }
-    
-    for (uint8_t i = 0; i < 9; ++i) {
-        for (uint8_t j = 0; j < 9; ++j) {
-            if (board[i][j].value != 0) {
-                board[i][j].is_given = 1;
-            }
-        }
-    }
+    for (uint8_t i = 0; i < 9; ++i)
+        for (uint8_t j = 0; j < 9; ++j)
+            if (board[i][j].value != 0)
+                board[i][j].setFlag(Cell::GIVEN, true);
 }
 
 void SudokuCore::loadPuzzle(Difficulty difficulty) {
@@ -84,190 +72,126 @@ void SudokuCore::loadPuzzle(Difficulty difficulty) {
 void SudokuCore::reset() {
     for (uint8_t i = 0; i < 9; ++i) {
         for (uint8_t j = 0; j < 9; ++j) {
-            if (!board[i][j].is_given) {
+            if (!board[i][j].hasFlag(Cell::GIVEN)) {
                 board[i][j].value = 0;
-                memset(board[i][j].notes, 0, sizeof(board[i][j].notes));
-                board[i][j].is_error = 0;
+                board[i][j].notes = 0;
+                board[i][j].setFlag(Cell::ERR, false);
             }
-            board[i][j].is_selected = 0;
-            board[i][j].is_highlighted = 0;
+            board[i][j].setFlag(Cell::SELECTED, false);
+            board[i][j].setFlag(Cell::HIGHLIGHTED, false);
         }
     }
     clearSelection();
 }
 
-uint8_t SudokuCore::getValue(int8_t row, int8_t col) const {
-    if (row < 0 || row >= 9 || col < 0 || col >= 9) return 0;
-    return board[row][col].value;
-}
+uint8_t SudokuCore::getValue(int8_t row, int8_t col) const { return board[row][col].value; }
 
 bool SudokuCore::setValue(int8_t row, int8_t col, uint8_t value) {
     if (row < 0 || row >= 9 || col < 0 || col >= 9) return false;
-    if (board[row][col].is_given) return false;
-    
+    if (board[row][col].hasFlag(Cell::GIVEN)) return false;
     board[row][col].value = value;
-    memset(board[row][col].notes, 0, sizeof(board[row][col].notes));
-    
+    board[row][col].notes = 0;
     checkConflicts();
     return true;
 }
 
-bool SudokuCore::eraseValue(int8_t row, int8_t col) {
-    return setValue(row, col, 0);
-}
+bool SudokuCore::eraseValue(int8_t row, int8_t col) { return setValue(row, col, 0); }
 
 bool SudokuCore::toggleNote(int8_t row, int8_t col, uint8_t note) {
-    if (row < 0 || row >= 9 || col < 0 || col >= 9) return false;
-    if (note < 1 || note > 9) return false;
-    if (board[row][col].is_given) return false;
-    if (board[row][col].value != 0) return false;
-    
-    board[row][col].notes[note - 1] = !board[row][col].notes[note - 1];
+    if (row < 0 || row >= 9 || col < 0 || col >= 9 || note < 1 || note > 9) return false;
+    if (board[row][col].hasFlag(Cell::GIVEN) || board[row][col].value != 0) return false;
+    board[row][col].notes ^= (1 << (note - 1)); // XOR 翻转该位
     return true;
 }
 
 bool SudokuCore::clearNotes(int8_t row, int8_t col) {
     if (row < 0 || row >= 9 || col < 0 || col >= 9) return false;
-    memset(board[row][col].notes, 0, sizeof(board[row][col].notes));
+    board[row][col].notes = 0;
     return true;
 }
 
 void SudokuCore::selectCell(int8_t row, int8_t col) {
-    for (uint8_t i = 0; i < 9; ++i) {
-        for (uint8_t j = 0; j < 9; ++j) {
-            board[i][j].is_selected = 0;
-            board[i][j].is_highlighted = 0;
-        }
-    }
-    
+    clearSelection();
     if (row >= 0 && row < 9 && col >= 0 && col < 9) {
-        selected_row = row;
-        selected_col = col;
-        board[row][col].is_selected = 1;
-        
-        uint8_t selected_value = board[row][col].value;
-        
+        selected_row = row; selected_col = col;
+        board[row][col].setFlag(Cell::SELECTED, true);
+        uint8_t val = board[row][col].value;
+
         for (uint8_t i = 0; i < 9; ++i) {
-            board[row][i].is_highlighted = 1;
-            board[i][col].is_highlighted = 1;
+            board[row][i].setFlag(Cell::HIGHLIGHTED, true);
+            board[i][col].setFlag(Cell::HIGHLIGHTED, true);
         }
-        
-        int8_t box_row = (row / 3) * 3;
-        int8_t box_col = (col / 3) * 3;
-        for (int8_t i = box_row; i < box_row + 3; ++i) {
-            for (int8_t j = box_col; j < box_col + 3; ++j) {
-                board[i][j].is_highlighted = 1;
-            }
+        int8_t box_row = (row / 3) * 3, box_col = (col / 3) * 3;
+        for (int8_t i = box_row; i < box_row + 3; ++i)
+            for (int8_t j = box_col; j < box_col + 3; ++j)
+                board[i][j].setFlag(Cell::HIGHLIGHTED, true);
+
+        if (val != 0) {
+            for (uint8_t i = 0; i < 9; ++i)
+                for (uint8_t j = 0; j < 9; ++j)
+                    if (board[i][j].value == val)
+                        board[i][j].setFlag(Cell::HIGHLIGHTED, true);
         }
-        
-        if (selected_value != 0) {
-            for (uint8_t i = 0; i < 9; ++i) {
-                for (uint8_t j = 0; j < 9; ++j) {
-                    if (board[i][j].value == selected_value) {
-                        board[i][j].is_highlighted = 1;
-                    }
-                }
-            }
-        }
-    } else {
-        clearSelection();
     }
 }
 
 void SudokuCore::clearSelection() {
-    selected_row = -1;
-    selected_col = -1;
+    selected_row = -1; selected_col = -1;
     for (uint8_t i = 0; i < 9; ++i) {
         for (uint8_t j = 0; j < 9; ++j) {
-            board[i][j].is_selected = 0;
-            board[i][j].is_highlighted = 0;
+            board[i][j].setFlag(Cell::SELECTED, false);
+            board[i][j].setFlag(Cell::HIGHLIGHTED, false);
         }
     }
 }
 
-int8_t SudokuCore::getSelectedRow() const {
-    return selected_row;
-}
-
-int8_t SudokuCore::getSelectedCol() const {
-    return selected_col;
-}
-
-bool SudokuCore::isGiven(int8_t row, int8_t col) const {
-    if (row < 0 || row >= 9 || col < 0 || col >= 9) return false;
-    return board[row][col].is_given;
-}
-
-bool SudokuCore::isSelected(int8_t row, int8_t col) const {
-    if (row < 0 || row >= 9 || col < 0 || col >= 9) return false;
-    return board[row][col].is_selected;
-}
-
-bool SudokuCore::isHighlighted(int8_t row, int8_t col) const {
-    if (row < 0 || row >= 9 || col < 0 || col >= 9) return false;
-    return board[row][col].is_highlighted;
-}
-
-bool SudokuCore::isError(int8_t row, int8_t col) const {
-    if (row < 0 || row >= 9 || col < 0 || col >= 9) return false;
-    return board[row][col].is_error;
-}
-
-const uint8_t* SudokuCore::getNotes(int8_t row, int8_t col) const {
-    static uint8_t empty_notes[9] = {0};
-    if (row < 0 || row >= 9 || col < 0 || col >= 9) return empty_notes;
-    return board[row][col].notes;
-}
+bool SudokuCore::isGiven(int8_t row, int8_t col) const { return board[row][col].hasFlag(Cell::GIVEN); }
+bool SudokuCore::isSelected(int8_t row, int8_t col) const { return board[row][col].hasFlag(Cell::SELECTED); }
+bool SudokuCore::isHighlighted(int8_t row, int8_t col) const { return board[row][col].hasFlag(Cell::HIGHLIGHTED); }
+bool SudokuCore::isError(int8_t row, int8_t col) const { return board[row][col].hasFlag(Cell::ERR); }
+uint16_t SudokuCore::getNotes(int8_t row, int8_t col) const { return board[row][col].notes; }
 
 bool SudokuCore::isComplete() const {
-    for (uint8_t i = 0; i < 9; ++i) {
-        for (uint8_t j = 0; j < 9; ++j) {
+    for (uint8_t i = 0; i < 9; ++i)
+        for (uint8_t j = 0; j < 9; ++j)
             if (board[i][j].value == 0) return false;
-        }
-    }
     return !const_cast<SudokuCore*>(this)->checkConflicts();
 }
 
 bool SudokuCore::checkConflicts() {
     bool has_conflict = false;
-    
-    for (uint8_t i = 0; i < 9; ++i) {
-        for (uint8_t j = 0; j < 9; ++j) {
-            board[i][j].is_error = 0;
-        }
-    }
-    
+    for (uint8_t i = 0; i < 9; ++i)
+        for (uint8_t j = 0; j < 9; ++j)
+            board[i][j].setFlag(Cell::ERR, false);
+
     for (int8_t row = 0; row < 9; ++row) {
         for (int8_t col = 0; col < 9; ++col) {
             uint8_t val = board[row][col].value;
             if (val == 0) continue;
-            
+
             for (uint8_t i = 0; i < 9; ++i) {
                 if (i != col && board[row][i].value == val) {
-                    board[row][col].is_error = 1;
-                    board[row][i].is_error = 1;
+                    board[row][col].setFlag(Cell::ERR, true);
+                    board[row][i].setFlag(Cell::ERR, true);
                     has_conflict = true;
                 }
                 if (i != row && board[i][col].value == val) {
-                    board[row][col].is_error = 1;
-                    board[i][col].is_error = 1;
+                    board[row][col].setFlag(Cell::ERR, true);
+                    board[i][col].setFlag(Cell::ERR, true);
                     has_conflict = true;
                 }
             }
-            
-            int8_t box_row = (row / 3) * 3;
-            int8_t box_col = (col / 3) * 3;
+            int8_t box_row = (row / 3) * 3, box_col = (col / 3) * 3;
             for (int8_t i = box_row; i < box_row + 3; ++i) {
                 for (int8_t j = box_col; j < box_col + 3; ++j) {
                     if ((i != row || j != col) && board[i][j].value == val) {
-                        board[row][col].is_error = 1;
-                        board[i][j].is_error = 1;
+                        board[row][col].setFlag(Cell::ERR, true);
+                        board[i][j].setFlag(Cell::ERR, true);
                         has_conflict = true;
                     }
                 }
             }
         }
     }
-    
     return has_conflict;
 }
