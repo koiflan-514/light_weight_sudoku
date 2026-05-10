@@ -1,1 +1,1 @@
-# LightWeight
+# light_weight_sudoku
