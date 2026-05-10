@@ -9,7 +9,6 @@ void SudokuCore::shuffleArray(uint8_t arr[], uint8_t size) {
     std::shuffle(arr, arr + size, rng);
 }
 
-// ... isValidPlacement 保持原样 (把 board[r][c].value 替换即可) ...
 bool SudokuCore::isValidPlacement(int8_t row, int8_t col, uint8_t num) const {
     if (num == 0) return true;
     for (uint8_t i = 0; i < 9; ++i) {
@@ -65,7 +64,7 @@ void SudokuCore::removeNumbers(uint8_t count) {
 
 void SudokuCore::loadPuzzle(Difficulty difficulty) {
     generateCompleteBoard();
-    removeNumbers(static_cast<uint8_t>(difficulty));
+    removeNumbers(81 - static_cast<uint8_t>(difficulty));
     clearSelection();
 }
 

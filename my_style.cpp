@@ -1,176 +1,121 @@
 #include "my_style.h"
 
 namespace UI {
+    ThemeData CurrentTheme;
+    ThemeType ActiveTheme = ThemeType::Dark;
 
-    static void push_style_color(ImGuiCol idx, ImVec4 color) {
-        ImGui::PushStyleColor(idx, color);
+    ImU32 fade_color(ImU32 col, float alpha_mul) {
+        int a = (int)(((col >> 24) & 0xFF) * alpha_mul);
+        return (col & 0x00FFFFFF) | (a << 24);
     }
 
-    static void push_style_var(ImGuiStyleVar idx, float val) {
-        ImGui::PushStyleVar(idx, val);
-    }
-    static void push_style_var(ImGuiStyleVar idx, ImVec2 val) {
-        ImGui::PushStyleVar(idx, val);
-    }
-
-    // === 窗口样式 ===
-    void set_window_rounding(float rounding) {
-        push_style_var(ImGuiStyleVar_WindowRounding, rounding);
-    }
-
-    void set_window_padding(ImVec2 padding) {
-        push_style_var(ImGuiStyleVar_WindowPadding, padding);
-    }
-
-    void set_window_border(bool enable) {
-        // ImGui 没有直接开关边框的变量，通过边框颜色透明度控制
-        ImVec4 border_color = enable ? ImVec4(0.5f, 0.5f, 0.5f, 1.0f) : ImVec4(0, 0, 0, 0);
-        push_style_color(ImGuiCol_Border, border_color);
-    }
-
-    void set_window_title_align(ImVec2 align) {
-        push_style_var(ImGuiStyleVar_WindowTitleAlign, align);
-    }
-
-    void set_window_bg_color(ImVec4 color) {
-        push_style_color(ImGuiCol_WindowBg, color);
-    }
-
-    void set_window_title_bg_color(ImVec4 color) {
-        push_style_color(ImGuiCol_TitleBg, color);
-        push_style_color(ImGuiCol_TitleBgActive, color);
-        push_style_color(ImGuiCol_TitleBgCollapsed, color);
-    }
-
-    // === 按钮样式 ===
-    void set_button_rounding(float rounding) {
-        push_style_var(ImGuiStyleVar_FrameRounding, rounding);
-        // 注意: 按钮圆角与 FrameRounding 共享，也可单独用 ChildRounding 但一般不单独
-    }
-
-    void set_button_padding(ImVec2 padding) {
-        push_style_var(ImGuiStyleVar_FramePadding, padding);
-    }
-
-    void set_button_colors(ImVec4 normal, ImVec4 hovered, ImVec4 active) {
-        push_style_color(ImGuiCol_Button, normal);
-        push_style_color(ImGuiCol_ButtonHovered, hovered);
-        push_style_color(ImGuiCol_ButtonActive, active);
-    }
-
-    void set_button_text_color(ImVec4 color) {
-        push_style_color(ImGuiCol_Text, color);
-    }
-
-    // === 帧样式（输入框、组合框等）===
-    void set_frame_rounding(float rounding) {
-        push_style_var(ImGuiStyleVar_FrameRounding, rounding);
-    }
-
-    void set_frame_padding(ImVec2 padding) {
-        push_style_var(ImGuiStyleVar_FramePadding, padding);
-    }
-
-    void set_frame_bg_color(ImVec4 color) {
-        push_style_color(ImGuiCol_FrameBg, color);
-    }
-
-    void set_frame_border_color(ImVec4 color) {
-        push_style_color(ImGuiCol_Border, color);
-    }
-
-    // === 复选框/单选框 ===
-    void set_checkbox_rounding(float rounding) {
-        push_style_var(ImGuiStyleVar_FrameRounding, rounding);
-    }
-
-    void set_checkbox_colors(ImVec4 normal, ImVec4 hovered, ImVec4 checked) {
-        push_style_color(ImGuiCol_CheckMark, checked);
-        push_style_color(ImGuiCol_FrameBg, normal);
-        push_style_color(ImGuiCol_FrameBgHovered, hovered);
-    }
-
-    // === 滑块 ===
-    void set_slider_grab_rounding(float rounding) {
-        push_style_var(ImGuiStyleVar_GrabRounding, rounding);
-    }
-
-    void set_slider_grab_color(ImVec4 color) {
-        push_style_color(ImGuiCol_SliderGrab, color);
-        push_style_color(ImGuiCol_SliderGrabActive, color);
-    }
-
-    void set_slider_thumb_size(float size) {
-        push_style_var(ImGuiStyleVar_GrabMinSize, size);
-    }
-
-    // === 文本颜色 ===
-    void set_text_color(ImVec4 color) {
-        push_style_color(ImGuiCol_Text, color);
-    }
-
-    void set_disabled_text_color(ImVec4 color) {
-        push_style_color(ImGuiCol_TextDisabled, color);
-    }
-
-    // === 弹出层 ===
-    void set_popup_rounding(float rounding) {
-        push_style_var(ImGuiStyleVar_PopupRounding, rounding);
-    }
-
-    void set_popup_bg_color(ImVec4 color) {
-        push_style_color(ImGuiCol_PopupBg, color);
-    }
-
-    void set_popup_border_color(ImVec4 color) {
-        push_style_color(ImGuiCol_Border, color);
-    }
-
-    void apply_win11_dark_theme() {
+    void apply_theme(ThemeType theme) {
+        ActiveTheme = theme;
         ImGuiStyle& style = ImGui::GetStyle();
-        style.WindowRounding = Win11Dark::Rounding;
-        style.FrameRounding = Win11Dark::FrameRounding;
-        style.GrabRounding = Win11Dark::GrabRounding;
-        style.FramePadding = Win11Dark::FramePadding;
-        style.WindowPadding = Win11Dark::WindowPadding;
-        style.WindowTitleAlign = ImVec2(0.5f, 0.5f);
 
-        style.Colors[ImGuiCol_WindowBg] = Win11Dark::WindowBg;
-        style.Colors[ImGuiCol_TitleBg] = Win11Dark::TitleBg;
-        style.Colors[ImGuiCol_TitleBgActive] = Win11Dark::TitleBg;
-        style.Colors[ImGuiCol_TitleBgCollapsed] = Win11Dark::TitleBg;
-        style.Colors[ImGuiCol_FrameBg] = Win11Dark::FrameBg;
-        style.Colors[ImGuiCol_FrameBgHovered] = Win11Dark::FrameBgHovered;
-        style.Colors[ImGuiCol_FrameBgActive] = Win11Dark::ButtonActive;
-        style.Colors[ImGuiCol_Button] = Win11Dark::Button;
-        style.Colors[ImGuiCol_ButtonHovered] = Win11Dark::ButtonHovered;
-        style.Colors[ImGuiCol_ButtonActive] = Win11Dark::ButtonActive;
-        style.Colors[ImGuiCol_Text] = Win11Dark::Text;
-        style.Colors[ImGuiCol_TextDisabled] = Win11Dark::TextDisabled;
-        style.Colors[ImGuiCol_Border] = Win11Dark::Border;
-        style.Colors[ImGuiCol_CheckMark] = Win11Dark::CheckMark;
-        style.Colors[ImGuiCol_SliderGrab] = Win11Dark::SliderGrab;
-        style.Colors[ImGuiCol_SliderGrabActive] = Win11Dark::Accent;
-        style.Colors[ImGuiCol_PopupBg] = Win11Dark::PopupBg;
-        style.Colors[ImGuiCol_Header] = Win11Dark::FrameBg;
-        style.Colors[ImGuiCol_HeaderHovered] = Win11Dark::FrameBgHovered;
-        style.Colors[ImGuiCol_HeaderActive] = Win11Dark::ButtonActive;
-        style.Colors[ImGuiCol_Tab] = Win11Dark::FrameBg;
-        style.Colors[ImGuiCol_TabHovered] = Win11Dark::FrameBgHovered;
-        style.Colors[ImGuiCol_TabActive] = Win11Dark::WindowBg;
-        style.Colors[ImGuiCol_ResizeGrip] = Win11Dark::Border;
-        style.Colors[ImGuiCol_ResizeGripHovered] = Win11Dark::SliderGrab;
-        style.Colors[ImGuiCol_ResizeGripActive] = Win11Dark::Accent;
-        style.Colors[ImGuiCol_Separator] = Win11Dark::Border;
-        style.Colors[ImGuiCol_ScrollbarBg] = Win11Dark::FrameBg;
-        style.Colors[ImGuiCol_ScrollbarGrab] = Win11Dark::SliderGrab;
-        style.Colors[ImGuiCol_ScrollbarGrabHovered] = Win11Dark::FrameBgHovered;
-        style.Colors[ImGuiCol_ScrollbarGrabActive] = Win11Dark::Accent;
+        // 全局圆角统一
+        style.WindowRounding = 8.0f;
+        style.FrameRounding = 6.0f;
+        style.ChildRounding = 6.0f;
+        style.PopupRounding = 6.0f;
+
+        ImVec4* colors = style.Colors;
+
+        if (theme == ThemeType::Dark) {
+            colors[ImGuiCol_WindowBg] = ImVec4(0.12f, 0.12f, 0.12f, 1.0f); // #1f1f1f
+            colors[ImGuiCol_Text] = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+
+            CurrentTheme = {
+                IM_COL32(37, 37, 38, 255),    // grid_bg
+                IM_COL32(45, 45, 46, 255),    // cell_bg
+                IM_COL32(80, 80, 80, 255),    // cell_hover
+                IM_COL32(63, 63, 63, 255),    // cell_highlight
+                IM_COL32(0, 120, 212, 255),   // cell_select
+                IM_COL32(255, 255, 255, 255), // text_given
+                IM_COL32(0, 180, 255, 255),   // text_normal
+                IM_COL32(255, 80, 80, 255),   // text_error
+                IM_COL32(150, 150, 150, 255), // text_note
+                IM_COL32(20, 20, 20, 255),    // border
+                IM_COL32(255, 255, 255, 200), // ripple
+                IM_COL32(0, 200, 100, 255)    // wave
+            };
+        }
+        else if (theme == ThemeType::Light) {
+            colors[ImGuiCol_WindowBg] = ImVec4(0.95f, 0.95f, 0.95f, 1.0f); // #f2f2f2
+            colors[ImGuiCol_Text] = ImVec4(0.1f, 0.1f, 0.1f, 1.0f);
+
+            CurrentTheme = {
+                IM_COL32(255, 255, 255, 255), // grid_bg
+                IM_COL32(243, 243, 243, 255), // cell_bg
+                IM_COL32(225, 225, 225, 255), // cell_hover
+                IM_COL32(235, 235, 235, 255), // cell_highlight
+                IM_COL32(204, 232, 255, 255), // cell_select
+                IM_COL32(0, 0, 0, 255),       // text_given
+                IM_COL32(0, 103, 192, 255),   // text_normal
+                IM_COL32(232, 17, 35, 255),   // text_error
+                IM_COL32(130, 130, 130, 255), // text_note
+                IM_COL32(200, 200, 200, 255), // border
+                IM_COL32(255, 255, 255, 200), // ripple
+                IM_COL32(40, 180, 99, 255)    // wave
+            };
+        }
+        else if (theme == ThemeType::Matcha) {
+            colors[ImGuiCol_WindowBg] = ImVec4(0.96f, 0.97f, 0.94f, 1.0f); // Fresh Green
+            colors[ImGuiCol_Text] = ImVec4(0.2f, 0.25f, 0.2f, 1.0f);
+
+            CurrentTheme = {
+                IM_COL32(255, 255, 255, 255),
+                IM_COL32(240, 244, 236, 255),
+                IM_COL32(215, 228, 205, 255),
+                IM_COL32(227, 235, 220, 255),
+                IM_COL32(163, 196, 140, 255),
+                IM_COL32(44, 54, 37, 255),
+                IM_COL32(92, 128, 69, 255),
+                IM_COL32(211, 47, 47, 255),
+                IM_COL32(140, 150, 130, 255),
+                IM_COL32(180, 190, 170, 255),
+                IM_COL32(255, 255, 255, 200),
+                IM_COL32(100, 200, 120, 255)
+            };
+        }
     }
 
-    // === 重置所有样式 ===
-    void reset_all_styles() {
-        ImGui::GetStyle() = ImGuiStyle();
+    int apply_accent_button() {
+        if (ActiveTheme == ThemeType::Dark) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.47f, 0.83f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.0f, 0.55f, 1.0f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.47f, 0.83f, 1.0f));
+        }
+        else if (ActiveTheme == ThemeType::Light) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.40f, 0.75f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.0f, 0.47f, 0.83f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.0f, 0.35f, 0.65f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f)); // 强行设为白字
+            return 4;
+        }
+        else { // Matcha
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.45f, 0.63f, 0.35f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.53f, 0.73f, 0.41f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.45f, 0.63f, 0.35f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+            return 4;
+        }
+        return 3;
     }
 
-} // namespace UI
+    int apply_dark_button() {
+        if (ActiveTheme == ThemeType::Dark) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.18f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.25f, 0.25f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.15f, 0.15f, 0.15f, 1.0f));
+        }
+        else { // Light & Matcha
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.80f, 0.80f, 0.80f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.75f, 0.75f, 0.75f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.1f, 0.1f, 0.1f, 1.0f));
+            return 4;
+        }
+        return 3;
+    }
+}
